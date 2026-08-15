@@ -1,26 +1,64 @@
 @import "tailwindcss";
 
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-inter: "Inter", sans-serif;
+  --font-jakarta: "Plus Jakarta Sans", sans-serif;
+  --primary-color: #C8102E;
+  --primary-light: #FFEDF0;
+  --gray-color: #4B5563;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer utilities {
+  .font-inter {
+    font-family: var(--font-inter);
   }
+
+  .font-jakarta {
+    font-family: var(--font-jakarta);
+  }
+
+  .text-primary,
+  .primary-color {
+    color: var(--primary-color);
+  }
+
+  .bg-primary-light,
+  .bg-primary-light-color {
+    background-color: var(--primary-light);
+  }
+
+  .text-gray,
+  .gray-color {
+    color: var(--gray-color);
+  }
+
+  .bg-primary,
+  .bg-primary-color {
+    background-color: var(--primary-color);
+  }
+
+  .border-primary,
+  .border-primary-color {
+    border-color: var(--primary-color);
+  }
+
+
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+
+@theme {
+  --animate-float: float 2s ease-in-out infinite;
+}
+
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-12px);
+  }
 }
