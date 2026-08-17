@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   Search,
   ExternalLink,
@@ -14,12 +15,13 @@ import { ASSETS } from "@/lib/assets";
 import Dropdown from "@/components/ui/Dropdown";
 import DropdownItem from "@/components/ui/DropdownItem";
 import NotificationModal from "@/components/ui/NotificationModal";
-import { getAdminAuthHeaders } from "@/lib/auth";
+import { getAdminAuthHeaders, setStoredAdminToken, setStoredAdminUser } from "@/lib/auth";
 
 type AdminProfile = {
   name?: string;
   email: string;
   role: string;
+  profile_image?: string;
 };
 
 export default function Topbar() {
@@ -80,6 +82,7 @@ export default function Topbar() {
             name: data.name || "",
             email: data.email || "",
             role: data.role || "Admin",
+            profile_image: data.profile_image || undefined,
           });
         }
       } catch (error) {
@@ -108,15 +111,27 @@ export default function Topbar() {
         method: "POST",
         credentials: "include",
         cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          ...getAdminAuthHeaders(),
+        },
       });
 
       if (res.ok) {
+        // Clear stored credentials
+        setStoredAdminToken(null);
+        setStoredAdminUser(null);
+        
+        // Redirect to login
         window.location.href = "/login";
       } else {
-        console.error("Logout failed:", await res.text());
+        const errorText = await res.text();
+        console.error("Logout failed:", errorText);
+        alert("Logout failed. Please try again.");
       }
     } catch (error) {
       console.error("Logout error:", error);
+      alert("An error occurred during logout. Please try again.");
     }
   }
 
@@ -164,11 +179,23 @@ export default function Topbar() {
             <div className="flex cursor-pointer items-center gap-3 rounded-lg py-1 pl-1 pr-2 transition-colors hover:bg-primary-light">
               {/* Avatar */}
               <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-light text-sm font-semibold text-primary">
-                <img
-                  src={ASSETS()[1].src}
-                  alt={ASSETS()[1].alt}
-                  className="h-full w-full rounded-full object-cover"
-                />
+                {admin?.profile_image ? (
+                  <Image
+                    src={admin.profile_image}
+                    alt={admin.name || "Admin avatar"}
+                    width={32}
+                    height={32}
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  <Image
+                    src={ASSETS()[1].src}
+                    alt={ASSETS()[1].alt}
+                    width={32}
+                    height={32}
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                )}
               </div>
 
               {/* Admin Information */}
@@ -193,7 +220,7 @@ export default function Topbar() {
           <DropdownItem
             label="Edit Profile"
             icon={User}
-            href="/dashboard/profile"
+            href="/dashboard/settings?tab=profile"
           />
 
           <div className="my-1 h-px bg-slate-100" />

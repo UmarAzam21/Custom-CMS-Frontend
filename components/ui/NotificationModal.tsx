@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, type MouseEvent } from "react";
+import { useCallback, useState, useRef, useEffect, type MouseEvent } from "react";
 import { Bell, X, Trash2, CheckCheck, FileText, ShieldCheck, Receipt, AlertTriangle, RefreshCw } from "lucide-react";
 
 
@@ -28,15 +28,39 @@ type NotificationModalProps = {
   userId?: string;
 };
 
-type NotificationResponsePayload = any;
+type NotificationResponsePayload = Record<string, unknown> | unknown[] | null;
 
-function normalizeNotifications(data: NotificationResponsePayload): any[] | null {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.data?.notifications)) return data.data.notifications;
-  if (Array.isArray(data?.notifications)) return data.notifications;
-  if (Array.isArray(data?.results)) return data.results;
-  if (Array.isArray(data?.items)) return data.items;
+type NotificationApiItem = {
+  id?: string | number;
+  notification_id?: string | number;
+  _id?: string | number;
+  uuid?: string | number;
+  key?: string | number;
+  resource_type?: string;
+  type?: string;
+  title?: string;
+  subject?: string;
+  message?: string;
+  body?: string;
+  created_at?: string;
+  createdAt?: string;
+  time?: string;
+  read?: boolean;
+  is_read?: boolean;
+  read_at?: string | null;
+};
+
+function normalizeNotifications(data: NotificationResponsePayload): NotificationApiItem[] | null {
+  if (Array.isArray(data)) return data as NotificationApiItem[];
+
+  const payload = data as Record<string, unknown> | null;
+  if (Array.isArray(payload?.data)) return payload.data as NotificationApiItem[];
+  if (Array.isArray(payload?.["data"] && (payload as Record<string, unknown>).data && (payload.data as Record<string, unknown>)?.notifications)) {
+    return ((payload as Record<string, unknown>).data as Record<string, unknown>).notifications as NotificationApiItem[];
+  }
+  if (Array.isArray(payload?.notifications)) return payload.notifications as NotificationApiItem[];
+  if (Array.isArray(payload?.results)) return payload.results as NotificationApiItem[];
+  if (Array.isArray(payload?.items)) return payload.items as NotificationApiItem[];
   return null;
 }
 
@@ -48,11 +72,14 @@ export default function NotificationModal({ userId }: NotificationModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const socketRef = useRef<WebSocket | null>(null);
 
+  const safeUserId = userId?.trim() && userId.trim() !== "admin" ? userId.trim() : "";
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const loadNotifications = async () => {
-    if (!userId) {
+  const loadNotifications = useCallback(async () => {
+    if (!safeUserId) {
+      setNotifications([]);
       return;
     }
 
@@ -60,65 +87,104 @@ export default function NotificationModal({ userId }: NotificationModalProps) {
     setError(null);
 
     try {
-      const query = `?user_id=${encodeURIComponent(userId)}`;
-      const res = await fetch(`/api/proxy/notifications${query}`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
+      const query = `?user_id=${encodeURIComponent(safeUserId)}`;
+      const [listRes, unreadRes] = await Promise.all([
+        fetch(`/api/proxy/notifications${query}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch(`/api/proxy/notifications/unread-count${query}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }),
+      ]);
 
-      if (!res.ok) {
-        throw new Error(`Failed to load notifications: ${res.status}`);
+      if (!listRes.ok) {
+        throw new Error(`Failed to load notifications: ${listRes.status}`);
       }
 
-      const data = await res.json();
+      const data = (await listRes.json()) as NotificationResponsePayload;
       const list = normalizeNotifications(data);
 
       if (!list) {
         throw new Error("Unexpected notifications response");
       }
 
-      setNotifications(
-        list.map((item: any) => ({
-          id: String(item.id ?? item.notification_id ?? item._id ?? item.uuid ?? item.key ?? "unknown"),
-          type: (item.resource_type as NotificationType) || item.type || "alert",
-          title: item.title || item.subject || item.message || "Notification",
-          message: item.message || item.body || "",
-          time: item.created_at || item.createdAt || item.time || "just now",
-          read: Boolean(item.read),
-        }))
-      );
+      const nextNotifications = list.map((item: NotificationApiItem) => ({
+        id: String(item.id ?? item.notification_id ?? item._id ?? item.uuid ?? item.key ?? "unknown"),
+        type: (item.resource_type as NotificationType) || item.type || "alert",
+        title: item.title || item.subject || item.message || "Notification",
+        message: item.message || item.body || "",
+        time: item.created_at || item.createdAt || item.time || "just now",
+        read: Boolean(item.read ?? item.is_read ?? item.read_at ?? false),
+      }));
+
+      if (unreadRes.ok) {
+        const unreadPayload = (await unreadRes.json()) as Record<string, unknown> | null;
+        const unreadTotal = Number(
+          unreadPayload?.count ??
+            unreadPayload?.unread_count ??
+            unreadPayload?.data?.count ??
+            unreadPayload?.data?.unread_count ??
+            0
+        );
+
+        if (Number.isFinite(unreadTotal)) {
+          const unreadIds = new Set(
+            nextNotifications
+              .filter((n) => !n.read)
+              .slice(0, Math.max(unreadTotal, 0))
+              .map((n) => n.id)
+          );
+
+          setNotifications(
+            nextNotifications.map((notification) => ({
+              ...notification,
+              read: !unreadIds.has(notification.id) || notification.read,
+            }))
+          );
+        } else {
+          setNotifications(nextNotifications);
+        }
+      } else {
+        setNotifications(nextNotifications);
+      }
+
       setLastLoadedAt(Date.now());
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message || "Unable to load notifications");
+      setError(err instanceof Error ? err.message : "Unable to load notifications");
     } finally {
       setLoading(false);
     }
-  };
+  }, [safeUserId]);
 
   useEffect(() => {
-    if (userId) {
-      loadNotifications();
+    if (!open || !safeUserId) {
+      return;
     }
-  }, [userId]);
+
+    const timer = window.setTimeout(() => {
+      void loadNotifications();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [open, safeUserId, loadNotifications]);
 
   useEffect(() => {
-    if (open && userId) {
-      loadNotifications();
+    if (!safeUserId) {
+      return;
     }
-  }, [open, userId]);
 
-  useEffect(() => {
     const handleFocus = () => {
-      if (userId) {
-        loadNotifications();
-      }
+      void loadNotifications();
     };
 
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [userId]);
+  }, [safeUserId, loadNotifications]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -134,111 +200,122 @@ export default function NotificationModal({ userId }: NotificationModalProps) {
       }
     }
 
-  function handleKey(e: KeyboardEvent) {
-    if (e.key === "Escape") setOpen(false);
-  }
-
-  document.addEventListener("mousedown", handleClick);
-  document.addEventListener("keydown", handleKey);
-  return () => {
-    document.removeEventListener("mousedown", handleClick);
-    document.removeEventListener("keydown", handleKey);
-  };
-}, []);
-
-  useEffect(() => {
-    async function loadNotifications() {
-      if (!userId) {
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-
-      try {
-        const query = `?user_id=${encodeURIComponent(userId)}`;
-        const res = await fetch(`/api/proxy/notifications${query}`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          throw new Error(`Failed to load notifications: ${res.status}`);
-        }
-
-        const data = await res.json();
-        const list = normalizeNotifications(data);
-
-        if (!list) {
-          throw new Error("Unexpected notifications response");
-        }
-
-        setNotifications(
-          list.map((item: any) => ({
-            id: String(item.id ?? item.notification_id ?? item._id ?? item.uuid ?? item.key ?? "unknown"),
-            type: (item.resource_type as NotificationType) || item.type || "alert",
-            title: item.title || item.subject || item.message || "Notification",
-            message: item.message || item.body || "",
-            time: item.created_at || item.createdAt || item.time || "just now",
-            read: Boolean(item.read),
-          }))
-        );
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || "Unable to load notifications");
-      } finally {
-        setLoading(false);
-      }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
     }
 
-    loadNotifications();
-  }, [userId]);
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!safeUserId) {
+      return;
+    }
+
+    const wsUrl = `ws://localhost:8000/api/notifications/ws/${encodeURIComponent(safeUserId)}`;
+    const socket = new WebSocket(wsUrl);
+    socketRef.current = socket;
+
+    socket.onopen = () => {
+      console.info("Notifications websocket connected", wsUrl);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as Record<string, unknown> | unknown[];
+        const shouldRefresh =
+          payload && typeof payload === "object" && (
+            ("type" in payload && payload.type === "notification") ||
+            ("event" in payload && payload.event === "notification") ||
+            ("action" in payload && payload.action === "refresh") ||
+            ("unread_count" in payload && payload.unread_count !== undefined)
+          ) || Array.isArray(payload);
+
+        if (shouldRefresh) {
+          void loadNotifications();
+        }
+      } catch {
+        void loadNotifications();
+      }
+    };
+
+    socket.onerror = () => {
+      console.warn("Notifications websocket unavailable for", safeUserId);
+    };
+
+    socket.onclose = () => {
+      socketRef.current = null;
+    };
+
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+        socketRef.current = null;
+      }
+    };
+  }, [safeUserId, loadNotifications]);
 
   const markAsRead = async (id: string) => {
+    if (!safeUserId) {
+      return;
+    }
+
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
 
     try {
-      const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-      await fetch(`/api/proxy/notifications/read${query}`, {
+      await fetch(`/api/proxy/notifications/read?user_id=${encodeURIComponent(safeUserId)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [id] }),
       });
+      await loadNotifications();
     } catch (err) {
       console.error("Failed to mark notification read", err);
     }
   };
 
   const markAllAsRead = async () => {
+    if (!safeUserId || notifications.length === 0) {
+      return;
+    }
+
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
 
     try {
-      const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-      await fetch(`/api/proxy/notifications/read${query}`, {
+      await fetch(`/api/proxy/notifications/read?user_id=${encodeURIComponent(safeUserId)}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: notifications.map((n) => n.id) }),
       });
+      await loadNotifications();
     } catch (err) {
       console.error("Failed to mark all notifications read", err);
     }
   };
 
   const deleteNotification = async (id: string, e: React.MouseEvent<HTMLButtonElement>) => {
+    if (!safeUserId) {
+      return;
+    }
+
     e.stopPropagation();
     setNotifications((prev) => prev.filter((n) => n.id !== id));
 
     try {
-      const query = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
-      await fetch(`/api/proxy/notifications/${encodeURIComponent(id)}${query}`, {
+      await fetch(`/api/proxy/notifications/${encodeURIComponent(id)}?user_id=${encodeURIComponent(safeUserId)}`, {
         method: "DELETE",
         credentials: "include",
       });
+      await loadNotifications();
     } catch (err) {
       console.error("Failed to delete notification", err);
     }
@@ -278,16 +355,23 @@ export default function NotificationModal({ userId }: NotificationModalProps) {
                   Notifications
                 </h2>
                 <p className="text-xs text-neutral-500">
-                  {unreadCount > 0
-                    ? `${unreadCount} unread`
-                    : "You're all caught up"}
+                  {loading
+                    ? "Loading..."
+                    : error
+                      ? error
+                      : lastLoadedAt
+                        ? `Updated ${new Date(lastLoadedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+                        : unreadCount > 0
+                          ? `${unreadCount} unread`
+                          : "You're all caught up"}
                 </p>
               </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={loadNotifications}
+                  onClick={() => void loadNotifications()}
+                  disabled={loading}
                   aria-label="Refresh notifications"
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <RefreshCw className="h-4 w-4" strokeWidth={2} />
                 </button>

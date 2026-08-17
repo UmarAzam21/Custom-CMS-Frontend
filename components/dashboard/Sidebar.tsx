@@ -110,10 +110,15 @@ export default function Sidebar() {
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
-                  className={`flex w-full items-center gap-3 rounded-md py-2.5 px-3 text-sm transition-colors hover:bg-slate-50 whitespace-nowrap ${
-                    isActive ? "text-primary" : "text-[#4B5563]"
+                  className={`relative flex w-full items-center gap-3 rounded-md py-2.5 px-3 text-sm transition-all whitespace-nowrap ${
+                    isActive
+                      ? "hover:bg-primary-light text-primary"
+                      : "text-[#4B5563]"
                   }`}
                 >
+                  {isActive && (
+                    <div className="absolute -left-3 top-1/2 -translate-y-1/2 h-10 w-1.5 rounded-r-full bg-primary" />
+                  )}
                   <Icon size={19} strokeWidth={1.8} className="shrink-0" />
                   <span
                     className={`transition-opacity duration-200 ${

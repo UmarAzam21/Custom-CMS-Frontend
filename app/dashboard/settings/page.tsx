@@ -1,19 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Settings2, Users } from "lucide-react";
 import SiteSettings from "@/components/dashboard/setting/SiteSetting";
 import { UserManagementSettings } from "@/components/dashboard/setting/UserManagementSettings";
+import EditProfilePage from "@/components/dashboard/setting/EditProfile";
 
-type TabKey = "site" | "users";
+type TabKey = "site" | "users" | "profile";
 
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
   { key: "site", label: "Site Settings", icon: Settings2 },
   { key: "users", label: "User Management", icon: Users },
+  { key: "profile", label: "Edit Profile", icon: Settings2 },
 ];
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>("site");
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") as TabKey | null;
+    if (tab && ["site", "users", "profile"].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -53,6 +64,9 @@ export default function SettingsPage() {
       </div>
       <div className={activeTab === "users" ? "block" : "hidden"}>
         <UserManagementSettings />
+      </div>
+      <div className={activeTab === "profile" ? "block" : "hidden"}>
+        <EditProfilePage />
       </div>
     </div>
   );
