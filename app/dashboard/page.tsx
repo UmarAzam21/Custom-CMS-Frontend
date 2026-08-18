@@ -1,10 +1,54 @@
+"use client";
+
+import { useMemo } from 'react';
+import { TrendingUp, MessageSquare, Zap, Users } from 'lucide-react';
 import RecentActivity from "@/components/dashboard/Activity";
 import SiteVisitorsChart from "@/components/dashboard/Chart";
-import { DashboardCards } from "@/lib/data";
 import QuickAccess from "@/components/dashboard/QuickAccess";
+import { useDashboardStats } from '@/lib/useDashboardStats';
 
 export default function DashboardOverviewPage() {
-  const stats = DashboardCards();
+  const { stats, loading, error } = useDashboardStats();
+
+  // Transform API stats into card format
+  const statsCards = useMemo(() => {
+    if (!stats) return [];
+
+    return [
+      {
+        title: 'Total Pages',
+        value: stats.total_pages || 0,
+        change: 'Pages published',
+        icon: TrendingUp,
+        iconBg: '#FEF2F2',
+        iconColor: '#c8102e',
+      },
+      {
+        title: 'New Messages',
+        value: stats.new_messages || 0,
+        change: 'Unread messages',
+        icon: MessageSquare,
+        iconBg: '#F0F9FF',
+        iconColor: '#0EA5E9',
+      },
+      {
+        title: 'SEO Health',
+        value: `${stats.seo_health_score || 0}%`,
+        change: 'Score',
+        icon: Zap,
+        iconBg: '#FFFBEB',
+        iconColor: '#F59E0B',
+      },
+      {
+        title: 'Users',
+        value: stats.admin_leads || 0,
+        change: 'Active users',
+        icon: Users,
+        iconBg: '#F0FDF4',
+        iconColor: '#22C55E',
+      },
+    ];
+  }, [stats]);
 
   return (
     <div>
@@ -15,8 +59,14 @@ export default function DashboardOverviewPage() {
         </h1>
       </div>
 
+      {error && (
+        <div className="my-4 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">
+          {error}
+        </div>
+      )}
+
       <div className="h-[129px] flex items-end gap-3">
-        {stats.map((card: any, index: any) => {
+        {statsCards.map((card, index) => {
           const Icon = card.icon;
 
           return (
@@ -29,7 +79,9 @@ export default function DashboardOverviewPage() {
                   {card.title}
                 </span>
 
-                <span className="text-xl font-semibold">{card.value}</span>
+                <span className="text-xl font-semibold">
+                  {loading ? '-' : card.value}
+                </span>
 
                 <span className="text-[11px] font-semibold text-[#4B5563]">
                   {card.change}
@@ -49,9 +101,9 @@ export default function DashboardOverviewPage() {
 
     <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
   <div className="lg:col-span-2">
-    <SiteVisitorsChart />
+    <SiteVisitorsChart stats={stats} loading={loading} />
   </div>
-  <RecentActivity />
+  <RecentActivity stats={stats} loading={loading} />
 </div>
  
 <div className="mt-6">

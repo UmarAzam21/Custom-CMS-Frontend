@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Upload, Search, ChevronDown, Trash2, FileText, Loader2, X } from "lucide-react";
+import { getAdminAuthHeaders } from "@/lib/auth";
 
 // FilerNow admin — Media Library
 // Drag-and-drop / browse upload → Cloudinary via backend → grid with search + type filter + delete.
@@ -65,21 +66,54 @@ export default function MediaLibrary() {
         method: "GET",
         credentials: "include",
         cache: "no-store",
+        headers: {
+          Accept: "application/json",
+          ...getAdminAuthHeaders(),
+        },
       });
       if (!res.ok) throw new Error(`Failed to load media: ${res.status}`);
       const data = await res.json();
       setItems(Array.isArray(data) ? data : data.items ?? []);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || "Unable to load media");
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(error);
+      setError(error.message || "Unable to load media");
     } finally {
       setLoading(false);
     }
   }, [typeFilter]);
 
   useEffect(() => {
-    loadMedia();
-  }, [loadMedia]);
+    // Load media on component mount with current typeFilter
+    const loadInitialMedia = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams();
+        if (typeFilter !== "all") params.set("resource_type", typeFilter);
+        const res = await fetch(`/api/proxy/admin/media?${params.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            ...getAdminAuthHeaders(),
+          },
+        });
+        if (!res.ok) throw new Error(`Failed to load media: ${res.status}`);
+        const data = await res.json();
+        setItems(Array.isArray(data) ? data : data.items ?? []);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(error);
+        setError(error.message || "Unable to load media");
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadInitialMedia();
+  }, [typeFilter]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -107,6 +141,9 @@ export default function MediaLibrary() {
       const res = await fetch("/api/proxy/admin/media/upload", {
         method: "POST",
         credentials: "include",
+        headers: {
+          ...getAdminAuthHeaders(),
+        },
         body: formData,
       });
 
@@ -115,8 +152,9 @@ export default function MediaLibrary() {
 
       setItems((prev) => [media, ...prev]);
       return media;
-    } catch (err: any) {
-      console.error(err);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(error);
       setError(`Failed to upload ${file.name}`);
       return null;
     } finally {
@@ -144,11 +182,15 @@ export default function MediaLibrary() {
       const res = await fetch(`/api/proxy/admin/media/${id}`, {
         method: "DELETE",
         credentials: "include",
+        headers: {
+          ...getAdminAuthHeaders(),
+        },
       });
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       setItems((prev) => prev.filter((m) => m.id !== id));
-    } catch (err: any) {
-      console.error(err);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      console.error(error);
       setError("Failed to delete media");
     } finally {
       setDeletingId(null);

@@ -142,7 +142,7 @@ export function getNavData(): NavItem[] {
     { label: "Messages", href: "/dashboard/messages", icon: Mail, moduleKey: "support_system", access: "read" },
     // No backend module protection confirmed for Media Library / SEO yet —
     // open to any logged-in admin for now, per explicit product decision.
-    // { label: "Media Library", href: "/dashboard/media", icon: ImageIcon },
+    { label: "Media Library", href: "/dashboard/media", icon: ImageIcon },
     // { label: "SEO", href: "/dashboard/seo", icon: Search },
     { label: "Users", href: "/dashboard/users", icon: Users, superAdminOnly: true },
     { label: "Settings", href: "/dashboard/settings", icon: Settings, moduleKey: "settings", access: "read" },
